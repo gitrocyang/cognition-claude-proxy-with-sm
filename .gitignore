@@ -1,4 +1,8 @@
 node_modules/
+.DS_Store
+dist/
+macos/DevinProxyManager/.build/
+macos/DevinProxyManager/.swiftpm/
 *.bin
 *.mitm
 *.log

@@ -62,17 +62,30 @@ if [ -z "${TAVILY_API_KEY:-}" ]; then
   echo "WARNING: TAVILY_API_KEY is not set. Tavily web search will be unavailable." >&2
 fi
 
-if ! curl -sf -o /dev/null "http://localhost:${CCP_PORT}/health"; then
+MANAGED_AGENT="${HOME}/Library/LaunchAgents/com.gitrocyang.devin-proxy-manager.proxy.plist"
+if [ -f "$MANAGED_AGENT" ]; then
+  # The manager owns this fixed label. Never create an independent nohup proxy.
+  if ! /bin/launchctl print "gui/$(id -u)/com.gitrocyang.devin-proxy-manager.proxy" >/dev/null 2>&1; then
+    echo "ERROR: managed proxy is stopped. Start it in Devin Proxy Manager." >&2
+    exit 1
+  fi
+  MANAGED_PID="$(/bin/launchctl print "gui/$(id -u)/com.gitrocyang.devin-proxy-manager.proxy" | sed -n 's/^[[:space:]]*pid = \([0-9]*\)$/\1/p' | head -n 1)"
+  LISTENER_PID="$(/usr/sbin/lsof -nP -iTCP:"${CCP_PORT}" -sTCP:LISTEN -t 2>/dev/null | head -n 1)"
+  if [ -z "$MANAGED_PID" ] || [ "$MANAGED_PID" != "$LISTENER_PID" ] || ! curl -sf -o /dev/null "http://127.0.0.1:${CCP_PORT}/health"; then
+    echo "ERROR: managed proxy is unhealthy or port ${CCP_PORT} belongs to another process." >&2
+    exit 1
+  fi
+elif ! curl -sf -o /dev/null "http://127.0.0.1:${CCP_PORT}/health"; then
   echo "Starting cognition-claude-proxy on port ${CCP_PORT}..."
   PROXY_LOG="${TMPDIR:-/tmp}/ccp-proxy.log"
   ( cd "$CCP_PROXY_DIR" && nohup node src/server.js >"$PROXY_LOG" 2>&1 & )
   i=0
   while [ "$i" -lt 20 ]; do
-    if curl -sf -o /dev/null "http://localhost:${CCP_PORT}/health"; then break; fi
+    if curl -sf -o /dev/null "http://127.0.0.1:${CCP_PORT}/health"; then break; fi
     i=$((i + 1))
     sleep 0.25
   done
-  if ! curl -sf -o /dev/null "http://localhost:${CCP_PORT}/health"; then
+  if ! curl -sf -o /dev/null "http://127.0.0.1:${CCP_PORT}/health"; then
     echo "ERROR: proxy failed to start. Last log lines (${PROXY_LOG}):" >&2
     tail -n 20 "$PROXY_LOG" >&2 || true
     exit 1

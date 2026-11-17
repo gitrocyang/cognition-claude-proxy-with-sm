@@ -1,4 +1,68 @@
-# cognition-claude-proxy
+# cognition-claude-proxy-with-sm
+
+> 本项目及 Devin Proxy Manager 是第三方代理工具，不是 Devin 或 Anthropic 官方客户端。
+
+## macOS 菜单栏管理器
+
+**Devin Proxy Manager** 是 macOS 14+ 的 SwiftUI 菜单栏应用。它通过当前用户的 LaunchAgent 托管本仓库的 Node.js 代理；退出菜单栏应用不会停止代理。菜单中分别显示代理运行状态、代理登录自启状态、管理器登录打开状态，提供启动、停止、重启、环境检查和日志查看。服务默认仅监听 `127.0.0.1:8765`，端口可在菜单中修改。
+
+### 构建与安装
+
+在本 Fork 仓库根目录执行：
+
+```bash
+./scripts/build-macos.sh
+./scripts/install-macos.sh
+open "$HOME/Applications/Devin Proxy Manager.app"
+```
+
+产物在 `dist/Devin Proxy Manager.app`。也可用 Xcode 打开 `macos/DevinProxyManager/Package.swift`，选择 `DevinProxyManager` scheme 构建；命令行等价构建为：
+
+```bash
+xcodebuild -scheme DevinProxyManager -configuration Release -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
+```
+
+构建脚本使用本机临时签名制作 `.app`，仅供本地使用。安装脚本不会覆盖已有应用或现有代理；首次安装将本仓库路径写入管理器自己的偏好设置，不改 Claude Code、Devin CLI 或其他模型配置。
+
+### 首次配置和服务控制
+
+在菜单中确认项目目录、Node.js 绝对路径和端口，点击「保存设置」，再点「检查运行环境」和「启动」。Node.js 自动搜索 Apple Silicon Homebrew 的 `/opt/homebrew/bin/node`、Intel Homebrew 的 `/usr/local/bin/node` 等位置，要求 Node 18+。Devin CLI 凭据默认只检查 `~/.local/share/devin/credentials.toml` 的可读性；若 Devin 使用其他路径，在菜单输入凭据文件路径。凭据内容不会被环境检查读取或写入 plist。
+
+「登录时自动启动代理」控制代理的 LaunchAgent；「登录时打开管理器」控制菜单栏应用登录项，二者独立。代理崩溃时 launchd 会尝试恢复；菜单中手动停止会从当前登录会话卸载服务，`dclaude` 不会把它重新拉起。若开启代理登录自启，**下次登录**会启动代理；关闭则下次登录保持停止。更改项目或 Node.js 路径后保存并重启代理，plist 会更新为新绝对路径。移动 `.app` 不影响已运行的代理；移动仓库后需在菜单重新选择目录并重启。
+
+日志位于 `~/Library/Logs/DevinProxyManager/`，`runtime.log` 和 `error.log` 各限制在约 5 MiB，超过时从空文件重新记录。管理模式不会启用代理的请求体调试转储。菜单可查看日志末尾或打开 Finder 目录。
+
+### 从手动代理迁移
+
+若 `8765` 已由旧仓库或手动启动的 Node 进程占用，管理器会显示占用进程 PID 并拒绝启动，**不会自动终止或接管**。先让使用旧代理的工作完成，再在原终端正常停止那个明确的进程，确认端口空闲，然后在菜单启动。本 Fork 的 `bin/dclaude` 检测到管理器创建的 LaunchAgent 后，只复用健康的受管理进程；显式停止后会报错并提示从菜单启动。未安装管理器时，它保留原有的按需启动路径。旧仓库的 `dclaude` 符号链接不会被安装脚本替换；如需使用本 Fork 的包装脚本，请自行确认当前 `command -v dclaude` 和符号链接目标后再切换。
+
+### 常见故障
+
+- **端口冲突**：用 `lsof -nP -iTCP:8765 -sTCP:LISTEN` 查归属。不要按 `node` 进程名批量终止。
+- **环境检查失败**：核对 Node.js 版本、项目目录、凭据文件路径和端口。凭据缺失时先运行 `devin auth login`。
+- **健康检查失败**：查看菜单中的错误日志；检查 `launchctl print gui/$(id -u)/com.gitrocyang.devin-proxy-manager.proxy`。
+- **`dclaude` 提示服务已停止**：在管理器中点「启动」。如果希望恢复原 CLI 自动启动方式，按下方步骤卸载管理器的 LaunchAgent。
+- **登录项不生效**：代理自启依赖用户 LaunchAgent；管理器登录项使用 macOS ServiceManagement，系统可能要求在「登录项」中允许本地签名应用。
+
+### 恢复 CLI 与完整卸载
+
+先退出管理器，再执行：
+
+```bash
+./scripts/uninstall-macos.sh
+```
+
+脚本只卸载带本管理器标记的 LaunchAgent，先通过 `launchctl bootout` 停止其服务，再删除 plist 与安装在 `~/Applications` 的应用，并尝试注销应用登录项。它不会触碰旧仓库、其他 Node 进程或 Claude Code 配置。日志保留供排查，可自行删除 `~/Library/Logs/DevinProxyManager`。卸载后本 Fork 的 `bin/dclaude` 恢复原有按需启动行为；若要恢复旧版 CLI 命令，仍需自行把 `dclaude` 符号链接指回旧仓库。
+
+### 自动化验证
+
+```bash
+npm run test:unit
+cd macos/DevinProxyManager && swift test
+CCP_MANAGER_INTEGRATION=1 swift test --filter testLaunchAgentLifecycleOnIsolatedPort
+```
+
+集成测试使用独立的 `18765` 端口和临时目录，不发送真实 Devin 推理请求；仅在明确设置环境变量后运行。运行前会检查固定测试端口和 LaunchAgent 标识是否空闲，结束后卸载测试服务。
 
 A local proxy that lets **Claude Code** (or any Anthropic-API client) use
 **Devin's model catalog** — SWE-2, GLM-5.2, DeepSeek V4.1 Flash, and 200+
@@ -48,8 +112,8 @@ on Linux/macOS). No API keys to manage — if `devin` works, `dclaude` works.
 ## Quick start
 
 ```powershell
-git clone https://github.com/coderexpert123/cognition-claude-proxy.git
-cd cognition-claude-proxy
+git clone https://github.com/gitrocyang/cognition-claude-proxy-with-sm.git
+cd cognition-claude-proxy-with-sm
 
 # Option A: use the wrapper (auto-starts the proxy)
 bin\dclaude.bat -p "hello"

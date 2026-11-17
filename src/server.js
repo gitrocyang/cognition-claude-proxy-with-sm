@@ -29,6 +29,14 @@ function anthropicError(res, status, type, message) {
   res.end(JSON.stringify({ type: "error", error: { type, message } }));
 }
 
+function logUpstreamError(error) {
+  // Managed logs never include upstream text, which may contain credentials.
+  const category = String(error.code || error.name || "unknown");
+  console.error("[upstream error]", process.env.CCP_MANAGED_LOG_DIR
+    ? (/^[a-zA-Z_]{1,40}$/.test(category) ? category : "unknown")
+    : error.message);
+}
+
 async function readBody(req) {
   const chunks = [];
   for await (const c of req) chunks.push(c);
@@ -199,7 +207,7 @@ async function handleMessages(req, res) {
       res.end();
     } catch (e) {
       stopTimers();
-      if (e.name !== "AbortError") console.error("[upstream error]", e.message);
+      if (e.name !== "AbortError") logUpstreamError(e);
       sseLog?.end();
       if (res.destroyed) return; // client already gone — nothing to write to
       const note = e.attempts > 1 ? ` (${e.attempts} upstream attempts)` : "";
@@ -233,7 +241,7 @@ async function handleMessages(req, res) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(msg));
     } catch (e) {
-      if (e.name !== "AbortError") console.error("[upstream error]", e.message);
+      if (e.name !== "AbortError") logUpstreamError(e);
       if (!res.destroyed) {
         const note = e.attempts > 1 ? ` (${e.attempts} upstream attempts)` : "";
         anthropicError(res, finalStatus(e), "api_error", e.message + note);

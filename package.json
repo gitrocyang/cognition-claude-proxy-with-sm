@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node scripts/test.js",
-    "test:unit": "node --test test/config.test.js"
+    "test:unit": "node --test test/*.test.js"
   },
   "bin": {
     "ccp": "src/server.js"
@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/coderexpert123/cognition-claude-proxy.git"
+    "url": "https://github.com/gitrocyang/cognition-claude-proxy-with-sm.git"
   },
   "keywords": ["claude-code", "devin", "anthropic", "proxy", "llm", "swe-2", "glm", "connect-rpc"]
 }
