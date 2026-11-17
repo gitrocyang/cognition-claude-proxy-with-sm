@@ -142,35 +142,38 @@ struct MenuContent: View {
 
 struct MenuGlyph: View {
     let state: ServiceSnapshot.State
-    private static let icon: NSImage = {
+    private static let base: NSImage = {
         guard let url = Bundle.module.url(forResource: "MenuGlyph", withExtension: "png"),
               let image = NSImage(contentsOf: url) else { return NSImage() }
-        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
         return image
     }()
-
-    private var dot: Color {
-        switch state {
-        case .running: .green
-        case .error: .orange
-        case .starting, .stopping: .yellow
-        case .stopped: .gray
+    private static func icon(for state: ServiceSnapshot.State) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            base.draw(in: NSRect(x: 0, y: 2, width: 16, height: 16))
+            let dot = NSBezierPath(ovalIn: NSRect(x: 12, y: 0, width: 5, height: 5))
+            NSColor.black.set()
+            switch state {
+            case .running: dot.fill()
+            case .stopped: dot.lineWidth = 1.4; dot.stroke()
+            case .starting, .stopping: dot.lineWidth = 2; dot.stroke()
+            case .error:
+                let diamond = NSBezierPath()
+                diamond.move(to: NSPoint(x: 14.5, y: 5.5))
+                diamond.line(to: NSPoint(x: 17.5, y: 2.5))
+                diamond.line(to: NSPoint(x: 14.5, y: -0.5))
+                diamond.line(to: NSPoint(x: 11.5, y: 2.5))
+                diamond.close()
+                diamond.fill()
+            }
+            return true
         }
+        image.isTemplate = true
+        return image
     }
 
     var body: some View {
-        Image(nsImage: Self.icon)
-            .renderingMode(.template)
-            .resizable()
-            .interpolation(.high)
-            .frame(width: 18, height: 18)
-            .overlay(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(dot)
-                    .frame(width: 6, height: 6)
-                    .overlay(Circle().stroke(.background, lineWidth: 1))
-                    .offset(x: 1, y: 1)
-            }
+        Image(nsImage: Self.icon(for: state))
             .accessibilityLabel("代理\(state.rawValue)")
     }
 }

@@ -65,7 +65,7 @@ func png(size: Int, menu: Bool) -> Data {
     return bitmap.representation(using: .png, properties: [:])!
 }
 
-try png(size: 64, menu: true).write(to: menuDirectory.appendingPathComponent("MenuGlyph.png"))
+try png(size: 18, menu: true).write(to: menuDirectory.appendingPathComponent("MenuGlyph.png"))
 let sizes: [(Int, String)] = [
     (16, "icon_16x16.png"), (32, "icon_16x16@2x.png"),
     (32, "icon_32x32.png"), (64, "icon_32x32@2x.png"),
