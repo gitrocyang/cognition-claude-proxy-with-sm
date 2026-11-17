@@ -18,6 +18,8 @@ open "$HOME/Applications/Devin Proxy Manager.app"
 
 产物在 `dist/Devin Proxy Manager.app`。也可用 Xcode 打开 `macos/DevinProxyManager/Package.swift`，选择 `DevinProxyManager` scheme 构建；命令行等价构建为：
 
+如需拖拽安装的磁盘映像，执行 `./scripts/build-dmg.sh`。产物为 `dist/Devin Proxy Manager-<版本>-macOS-<架构>.dmg`，内含应用、Applications 快捷方式和安装说明。DMG 不包含代理源码、Node.js 或 Devin CLI；首次打开应用后仍需选择本仓库目录。本地构建未经 Apple 公证。
+
 ```bash
 xcodebuild -scheme DevinProxyManager -configuration Release -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
 ```
