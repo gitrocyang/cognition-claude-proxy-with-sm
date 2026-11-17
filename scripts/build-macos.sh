@@ -4,10 +4,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGE="$ROOT/macos/DevinProxyManager"
 OUTPUT="$ROOT/dist/Devin Proxy Manager.app"
 
+swift "$ROOT/scripts/render-macos-icon.swift" "$ROOT"
 swift build --package-path "$PACKAGE" -c release
 BIN="$(swift build --package-path "$PACKAGE" -c release --show-bin-path)/DevinProxyManager"
 mkdir -p "$OUTPUT/Contents/MacOS"
+mkdir -p "$OUTPUT/Contents/Resources"
 cp "$BIN" "$OUTPUT/Contents/MacOS/DevinProxyManager"
+cp "$ROOT/macos/DevinProxyManager/Resources/DevinProxyManager.icns" "$OUTPUT/Contents/Resources/DevinProxyManager.icns"
+cp -R "$(dirname "$BIN")/DevinProxyManager_DevinProxyManager.bundle" "$OUTPUT/Contents/Resources/"
 cat > "$OUTPUT/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -15,6 +19,7 @@ cat > "$OUTPUT/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.gitrocyang.devin-proxy-manager</string>
 <key>CFBundleName</key><string>Devin Proxy Manager</string>
 <key>CFBundleExecutable</key><string>DevinProxyManager</string>
+<key>CFBundleIconFile</key><string>DevinProxyManager.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>

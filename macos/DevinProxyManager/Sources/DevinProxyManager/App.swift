@@ -140,6 +140,41 @@ struct MenuContent: View {
     }
 }
 
+struct MenuGlyph: View {
+    let state: ServiceSnapshot.State
+    private static let icon: NSImage = {
+        guard let url = Bundle.module.url(forResource: "MenuGlyph", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return NSImage() }
+        image.isTemplate = true
+        return image
+    }()
+
+    private var dot: Color {
+        switch state {
+        case .running: .green
+        case .error: .orange
+        case .starting, .stopping: .yellow
+        case .stopped: .gray
+        }
+    }
+
+    var body: some View {
+        Image(nsImage: Self.icon)
+            .renderingMode(.template)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 18, height: 18)
+            .overlay(alignment: .bottomTrailing) {
+                Circle()
+                    .fill(dot)
+                    .frame(width: 6, height: 6)
+                    .overlay(Circle().stroke(.background, lineWidth: 1))
+                    .offset(x: 1, y: 1)
+            }
+            .accessibilityLabel("代理\(state.rawValue)")
+    }
+}
+
 @main
 struct DevinProxyManagerApp: App {
     @StateObject private var model = ManagerModel()
@@ -153,7 +188,7 @@ struct DevinProxyManagerApp: App {
         MenuBarExtra {
             MenuContent(model: model)
         } label: {
-            Label("Devin Proxy Manager", systemImage: model.snapshot.state == .running ? "circle.fill" : model.snapshot.state == .error ? "exclamationmark.triangle.fill" : "circle")
+            MenuGlyph(state: model.snapshot.state)
         }
         .menuBarExtraStyle(.window)
     }

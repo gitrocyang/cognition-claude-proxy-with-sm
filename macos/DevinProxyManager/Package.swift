@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [.executable(name: "DevinProxyManager", targets: ["DevinProxyManager"])],
     targets: [
-        .executableTarget(name: "DevinProxyManager"),
+        .executableTarget(name: "DevinProxyManager", resources: [.copy("Resources/MenuGlyph.png")]),
         .testTarget(name: "DevinProxyManagerTests", dependencies: ["DevinProxyManager"])
     ]
 )
