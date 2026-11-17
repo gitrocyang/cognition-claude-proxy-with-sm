@@ -1,157 +1,40 @@
-# cognition-claude-proxy — Agentic Brain
+# Repository guidance
 
-## What this is
+This fork contains a zero-dependency Node.js proxy for the Anthropic Messages
+API and a macOS 14+ SwiftUI menu bar app, Devin Proxy Manager. The proxy must
+remain usable without the app.
 
-A zero-dependency Node.js proxy that bridges the Anthropic Messages API to
-the Devin CLI's Connect-RPC inference backend, so Claude Code (or any
-Anthropic-compatible harness) can use Devin's model catalog — SWE-2,
-GLM-5.2, DeepSeek V4.1 Flash, etc. — as its backend.
+## Code layout
 
-## Repo state
+- `src/` contains the proxy, protocol translation, model catalog, and Devin
+  CLI credential lookup.
+- `bin/dclaude` is the macOS/Linux Claude Code wrapper. `bin/dclaude.bat` is
+  the Windows wrapper.
+- `macos/DevinProxyManager/` contains the native menu bar app.
+- `scripts/build-macos.sh` builds the local `.app`; `scripts/build-dmg.sh`
+  packages it into a local DMG.
 
-One branch: **`main`**, published. There is no `master` (verified
-2026-10-24: `git branch -a` lists only `main` / `origin/main`), so every
-commit goes to `main` — keep its history and content free of internal
-process references and private working files.
+## Service and safety rules
 
-The public repo is at `https://github.com/coderexpert123/cognition-claude-proxy`
-(tagged `v0.1.0`, MIT licensed). On macOS, pushes authenticate as
-`hrishikesh-agentpug` — a write collaborator since 2026-10-24 (invites are
-accepted via `gh api -X PATCH /user/repository_invitations/<id>`); the
-`coderexpert123` creds live on the Windows machine.
+- The manager owns only its user LaunchAgent label
+  `com.gitrocyang.devin-proxy-manager.proxy`. Never terminate processes by a
+  broad name such as `node` or `server.js`.
+- Check launchd state, process ownership, and `/health` before reporting a
+  healthy managed proxy. Do not treat an occupied port as proof of ownership.
+- `dclaude` must not start a separate proxy while the managed LaunchAgent is
+  installed, including after the user explicitly stops the service.
+- Keep the default listener on loopback. Do not modify official Claude Code,
+  Devin CLI, or other model configurations.
+- Never commit credentials, API keys, authentication headers, request dumps,
+  or machine-specific paths. Environment checks may check credential file
+  access but must not display its contents.
 
-## Intelligence layers
+## Verification
 
-1. **Protocol** — the wire format is documented inline in `src/codeium.js`
-   and `src/proto.js` (Connect-RPC `connect+proto`, 5-byte framed stream,
-   field mappings).
-2. **Source** — `src/`: `server.js` (HTTP), `translate.js` (Anthropic↔Connect-RPC),
-   `codeium.js` (upstream client), `proto.js` (protobuf codec), `config.js`
-   (credential loader), `models.js` + `models.json` (catalog sync).
-3. **Harness integration** — `bin/dclaude.bat` (Windows) and `bin/dclaude`
-   (macOS/Linux) wrappers, `claude-settings.json` (generated modelPicker
-   rows), `scripts/gen-settings.js` (generator).
-
-## Brain files
-
-- `src/codeium.js` — consult when debugging upstream request/response issues
-- `src/models.json` — consult when model catalog changes; regenerate via
-  live `GetCliModelConfigs` response
-- `claude-settings.json` — generated, do not hand-edit; run
-  `node scripts/gen-settings.js` after `models.json` updates
-
-## Verifying a wrapper change
-
-Do not test `bin/dclaude` by launching a real session — it burns a model
-call and hangs an interactive TUI. Put a stub `claude` first on PATH and
-inspect what the wrapper forwards:
-
-```bash
-mkdir -p /tmp/dclaude-test
-printf '#!/bin/bash\nprintf "  [%%s]\\n" "$@"\n' > /tmp/dclaude-test/claude
-chmod +x /tmp/dclaude-test/claude
-PATH="/tmp/dclaude-test:$PATH" bin/dclaude                       # empty-arg case
-PATH="/tmp/dclaude-test:$PATH" bin/dclaude -p "two  spaces" --free
-```
-
-The first case is the one that regresses: bash 3.2 + `set -u` aborts on an
-empty `"${PASSED_ARGS[@]}"`. Both runs must exit 0, and the quoted prompt
-must arrive as one argv element.
-
-## Model waterfall (pinned 2026-09-16)
-
-- fable/planner → `deepseek-v4-1-flash-max[1m]` (paid, 1M, max thinking;
-  architecture-level planning subagent only)
-- opus/main thread + deep-plan → `glm-5-2` (paid, 200K)
-- sonnet/execute + verify → `swe-2-max` (free, 262K, max effort; builder and
-  verifier run as separate dispatches)
-- haiku/background → `swe-2-max` (free, 262K)
-- `dclaude --free` = `dclaude --swe2` → all tiers `swe-2-max`, planner drops
-  to 262K. Identical since GLM left the free plan (2026-09-18).
-
-Effort is baked into the model variant (`-max`=xhigh, `-high`=high,
-`-medium`=medium), so selecting the model ID pins effort automatically.
-
-## Headless subagent dispatch (Devin CLI)
-
-`run_subagent` is buggy — never use it. All subagent work is dispatched as a
-headless `devin -p` subprocess via `exec` (background, `timeout: 0`),
-monitored with `get_output(shell_id)` until exit. Run from the repo root:
-
-- **planner:** `devin -p "<task>" --model deepseek-v4-1-flash-max --permission-mode auto --respect-workspace-trust false`
-- **deep-planner:** `devin -p "<task>" --model glm-5-2 --permission-mode auto --respect-workspace-trust false`
-- **builder:** `devin -p "<task>" --model swe-2-max --permission-mode accept-edits --respect-workspace-trust false`
-- **verifier:** `devin -p "<task>" --model swe-2-max --permission-mode auto --respect-workspace-trust false`
-  — a separate dispatch, never a continuation of the builder's session
-
-Handoff is file-based: planner writes `plan.md`, deep-planner writes
-`spec.md`, builder writes code (verify via `git diff`), verifier writes
-`verify.md`. The orchestrator reads the artifact file after the subprocess exits.
-
-Context windows: 1M models use `[1m]` suffix (stripped before upstream);
-200K models use `behavesAs: "claude-opus-4-6"`; 262K models use env
-`CLAUDE_CODE_MAX_CONTEXT_TOKENS=262000`. Precedence: `[1m]` > `behavesAs`
-> env > 200K default.
-
-## Gotchas
-
-- **Upstream content filter** rejects certain phrases in Claude Code's system
-  prompt. `sanitizeSystem` replaces the whole prompt with a neutral one + env
-  bullets. Tool descriptions: strip file-access claims + cap at 480 chars
-  (`sanitizeToolDesc`).
-- **`[1m]` is the only context suffix Claude Code parses** — `[262k]` is
-  rejected and stays in the model id sent upstream.
-- **Cloud MCP connectors are disabled** when `ANTHROPIC_AUTH_TOKEN` is set
-  (local proxy auth overrides claude.ai login). Local/stdio MCPs work fine.
-- **The proxy uses local Devin CLI credentials** to authenticate. Free models
-  (SWE-2) are the safest targets.
-- **Credentials live in the XDG DATA dir on macOS/Linux, not `~/.config`** —
-  Devin CLI follows XDG on every Unix (macOS included): `$XDG_DATA_HOME/devin/
-  credentials.toml`, else `~/.local/share/devin/credentials.toml`. Windows
-  stays `%APPDATA%\devin\credentials.toml`. `config.json` is the file under
-  `~/.config/devin` — don't conflate the two dirs. `test/config.test.js` pins
-  both platforms.
-- **Restart the proxy after credential/config changes** — `dclaude`
-  health-checks `:8765` and reuses an already-running proxy, so a stale
-  process keeps the old code/path. Kill it (`pkill -f src/server.js` on
-  macOS/Linux) before re-running.
-- **macOS bash 3.2 + `set -u` rejects empty array expansion** — plain
-  `dclaude` (no pass-through args) fails with
-  `PASSED_ARGS[@]: unbound variable`; bash 4.4+ made this legal. Guard with
-  `${PASSED_ARGS[@]+"${PASSED_ARGS[@]}"}`. `bin/dclaude` keeps parity with
-  `bin/dclaude.bat`. On macOS `~/.local/bin/dclaude` is a **symlink** to
-  `bin/dclaude` — edit only the repo file. A stale standalone copy from
-  2026-09-17 shadowed the repo script and reintroduced the crash; it is
-  backed up as `~/.local/bin/dclaude.bak-2026-10-24`.
-- **`dclaude` is in the user PATH** (`D:\My Repos\cognition-claude-proxy\bin`)
-  — persistent across reboots. New terminals pick it up; already-open
-  terminals need a restart.
-- **`%~1` in the bat arg loop strips quotes** — `-p "create a file..."`
-  became `-p create a file...` and claude only saw "create". Fixed by
-  re-quoting each arg with `"%~1"`. The batch arg loop is fragile — if
-  argument quoting breaks again, check `bin/dclaude.bat` first.
-- **Literal parens inside a bat `if (...) else (...)` block close the block
-  early** — `echo DISABLED (key not set)` parses the `)` as the block end.
-  Use `--` style (`DISABLED -- key not set`) or escape with `^)` inside
-  parenthesized blocks.
-- **Multiple instances are safe** — `dclaude` health-checks the proxy on
-  :8765 before starting. If already up, it reuses it. Second-instance
-  `EADDRINUSE` is caught by `server.on("error")` and exits cleanly.
-- **Upstream tool-call IDs can violate Anthropic's `^[a-zA-Z0-9_-]+$`**
-  pattern (dots/colons/etc). `sanitizeToolId` in `translate.js` replaces
-  invalid chars with `_` in BOTH directions — outbound so Claude Code never
-  stores a bad ID, inbound so stored bad IDs from pre-fix sessions get
-  cleaned on resume. Deterministic so tool_use/tool_result pairs stay
-  matched. Fixed after `400 messages.N.content.N.tool_use.id` on resume.
-- **Upstream can transiently fail valid requests** (`invalid_argument`,
-  `internal`). The proxy normalizes requests (`normalizeChisel` merges
-  consecutive assistant messages and stubs orphaned tool_results — the
-  orphan check is per-id (`!pending.has(toolCallId)`), not pending-set
-  emptiness: a result can be orphaned while other calls are still pending
-  (its call was dropped when an assistant msg held only unsupported
-  blocks)), clamps
-  out-of-range sampling params, and retries upstream calls before the SSE
-  response commits (`withRetries`, `CCP_MAX_ATTEMPTS`, default 8) — for
-  streams the gate is the first content event, not the first frame, since
-  errors can arrive after a leading metadata frame. Exhausted flaky failures
-  surface as HTTP 500 so retrying clients get a second pass.
+- Run `npm run test:unit` for the proxy and wrapper tests.
+- Run `swift test` from `macos/DevinProxyManager` for Swift unit tests.
+- The opt-in LaunchAgent integration test runs on port `18765` with
+  `CCP_MANAGER_INTEGRATION=1 swift test --filter testLaunchAgentLifecycleOnIsolatedPort`.
+  Confirm that label and port are free before running it.
+- Run `./scripts/build-macos.sh` or `./scripts/build-dmg.sh` for local artifacts.
+- Do not use a real Devin inference request as a routine automated test.
