@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const wrapper = path.join(root, "bin/dclaude");
 
-test("dclaude does not revive a stopped managed service", () => {
+test("dclaude refuses to start a second proxy when a manager agent is configured", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "dclaude-managed-"));
   const agents = path.join(home, "Library", "LaunchAgents");
   fs.mkdirSync(agents, { recursive: true });
@@ -21,7 +21,7 @@ test("dclaude does not revive a stopped managed service", () => {
       encoding: "utf8", timeout: 5000,
     });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /managed proxy is stopped/);
+    assert.match(result.stderr, /ERROR: managed proxy/);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 

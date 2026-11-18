@@ -15,11 +15,25 @@ final class ManagerModel: ObservableObject {
     @Published var portText = String(ServiceManager.defaults.integer(forKey: "port") == 0 ? 8765 : ServiceManager.defaults.integer(forKey: "port"))
     @Published var appLogin = SMAppService.mainApp.status == .enabled
     private let manager = ServiceManager()
+    private let snapshotProvider: () -> ServiceSnapshot
+    private var refreshTimer: Timer?
+
+    init(snapshotProvider: @escaping () -> ServiceSnapshot = { ServiceManager().snapshot() },
+         pollInterval: TimeInterval = 5) {
+        self.snapshotProvider = snapshotProvider
+        refresh()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        }
+    }
+
+    deinit { refreshTimer?.invalidate() }
 
     func refresh() {
         guard !busy else { return }
+        let snapshotProvider = self.snapshotProvider
         Task.detached {
-            let result = ServiceManager().snapshot()
+            let result = snapshotProvider()
             await MainActor.run { self.snapshot = result }
         }
     }
@@ -131,8 +145,6 @@ struct MenuContent: View {
         }
         .padding(14)
         .frame(width: 330)
-        .onAppear { model.refresh() }
-        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in model.refresh() }
         .popover(isPresented: $model.showingLog) {
             ScrollView { Text(model.logText).font(.system(.caption, design: .monospaced)).textSelection(.enabled).padding() }
                 .frame(width: 600, height: 400)
